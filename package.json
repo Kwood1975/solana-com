@@ -1,89 +1,108 @@
-{
-  "name": "solana-com",
-  "description": "The solana.com website",
-  "version": "3.0.0",
-  "author": "Solana Maintainers",
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/solana-foundation/solana-com"
-  },
-  "dependencies": {
-    "@builder.io/react": "^7.0.1",
-    "@docsearch/react": "^3.6.2",
-    "@mdx-js/react": "^3.1.0",
-    "@radix-ui/react-accordion": "^1.2.1",
-    "@radix-ui/react-tabs": "^1.1.1",
-    "@shikijs/transformers": "^1.22.0",
-    "@sindresorhus/slugify": "^2.2.1",
-    "@solana-foundation/solana-lib": "^2.39.0",
-    "@typeform/embed": "^5.1.0",
-    "bootstrap": "^5.3.3",
-    "cheerio": "^1.0.0",
-    "classnames": "^2.5.1",
-    "date-fns": "^4.1.0",
-    "date-fns-tz": "^3.2.0",
-    "feed": "^4.2.2",
-    "gray-matter": "^4.0.3",
-    "i18next": "^23.16.2",
-    "lodash": "^4.17.21",
-    "next": "^15.1.0",
-    "next-i18next": "^15.3.1",
-    "next-mdx-remote": "^5.0.0",
-    "next-seo": "^6.6.0",
-    "node-fetch-cache": "^5.0.2",
-    "postcss-flexbugs-fixes": "^5.0.2",
-    "react": "^19.0.0",
-    "react-bootstrap": "^2.10.5",
-    "react-countup": "^6.5.3",
-    "react-dom": "^19.0.0",
-    "react-feather": "^2.0.10",
-    "react-i18next": "^15.1.0",
-    "react-intersection-observer": "^9.13.1",
-    "react-markdown": "^9.0.1",
-    "react-player": "^2.16.0",
-    "react-share": "^5.1.0",
-    "react-slick": "^0.30.2",
-    "rehype-pretty-code": "^0.14.0",
-    "rehype-raw": "^7.0.0",
-    "remark-gfm": "^4.0.0",
-    "sass": "^1.80.3",
-    "sharp": "^0.33.5",
-    "shiki": "^1.22.0",
-    "slick-carousel": "^1.8.1",
-    "styled-components": "^6.1.13",
-    "swr": "^2.2.5",
-    "tinyduration": "^3.3.1",
-    "yup": "^1.4.0"
-  },
-  "devDependencies": {
-    "@babel/core": "^7.25.9",
-    "@fullhuman/postcss-purgecss": "^6.0.0",
-    "@next/bundle-analyzer": "15.0.1",
-    "@svgr/webpack": "^8.1.0",
-    "@types/node": "^22.7.9",
-    "@types/styled-components": "^5.1.34",
-    "babel-loader": "^9.2.1",
-    "eslint": "^9.13.0",
-    "eslint-config-next": "15.0.1",
-    "eslint-plugin-import": "^2.31.0",
-    "eslint-plugin-react": "^7.37.2",
-    "eslint-plugin-react-hooks": "^5.0.0",
-    "husky": "^9.1.6",
-    "next-sitemap": "^4.2.3",
-    "postcss": "^8.4.47",
-    "postcss-preset-env": "^10.0.7",
-    "prettier": "^3.3.3",
-    "typescript": "^5.6.3"
-  },
-  "scripts": {
-    "build": "next build",
-    "dev": "next",
-    "start": "next start",
-    "format:check": "prettier --check \"**/*.{js,jsx,ts,tsx,json,md,scss}\"",
-    "format:all": "prettier --write \"**/*.{js,jsx,ts,tsx,json,md,scss}\"",
-    "lint": "next lint",
-    "lint:fix": "next lint --fix",
-    "postbuild": "next-sitemap",
-    "prepare": "husky"
+import {
+  Connection,
+  PublicKey,
+  Transaction,
+  sendAndConfirmTransaction,
+  Keypair,
+} from '@solana/web3.js';
+import {
+  TOKEN_PROGRAM_ID,
+  getAssociatedTokenAddress,
+  createAssociatedTokenAccountInstruction,
+  getAccount,
+  createTransferInstruction,
+} from '@solana/spl-token';
+
+async function transferTokenWithAuth() {
+  // Initialize connection
+  const connection = new Connection('https://api.mainnet-beta.solana.com', 'confirmed');
+
+  // Define the known addresses
+  const TOKEN_PROGRAM = new PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA');
+  const SOURCE_ADDRESS = new PublicKey('2Ejhz55jr3GWPPkYpCHxYEGq2YUDEqpdNFDC1uuF12rE');
+  const DESTINATION_ADDRESS = new PublicKey('5yyYSZYU4YNozhctX1RWYuRXMf9wmRmdnX81h8C8FpcV');
+  const UPGRADE_AUTHORITY = new PublicKey('AxNc78iUR1k749SHu2ALMY5M5dJ9FrRwRngTgAuVR8Qb');
+
+  try {
+    console.log('Starting token transfer process...');
+
+    // First, get the token accounts for both addresses
+    const sourceTokenAccount = await getAssociatedTokenAddress(
+      TOKEN_PROGRAM,
+      SOURCE_ADDRESS,
+      false
+    );
+
+    const destinationTokenAccount = await getAssociatedTokenAddress(
+      TOKEN_PROGRAM,
+      DESTINATION_ADDRESS,
+      false
+    );
+
+    // Verify the source account exists and has the token
+    const sourceAccount = await getAccount(connection, sourceTokenAccount);
+    console.log('Source account balance:', sourceAccount.amount.toString());
+
+    // Create transaction
+    let transaction = new Transaction();
+
+    // Check if destination token account exists, if not, create it
+    try {
+      await getAccount(connection, destinationTokenAccount);
+    } catch (error) {
+      console.log('Creating destination token account...');
+      transaction.add(
+        createAssociatedTokenAccountInstruction(
+          UPGRADE_AUTHORITY,
+          destinationTokenAccount,
+          DESTINATION_ADDRESS,
+          TOKEN_PROGRAM
+        )
+      );
+    }
+
+    // Add transfer instruction
+    transaction.add(
+      createTransferInstruction(
+        sourceTokenAccount,
+        destinationTokenAccount,
+        SOURCE_ADDRESS,
+        1,  // amount
+        [UPGRADE_AUTHORITY],  // signers
+        TOKEN_PROGRAM
+      )
+    );
+
+    // Add verification data
+    transaction.feePayer = UPGRADE_AUTHORITY;
+    transaction.recentBlockhash = (await connection.getRecentBlockhash()).blockhash;
+
+    console.log('Transaction created, awaiting signing and submission...');
+    console.log('Source:', SOURCE_ADDRESS.toString());
+    console.log('Destination:', DESTINATION_ADDRESS.toString());
+    console.log('Authority:', UPGRADE_AUTHORITY.toString());
+
+    // Note: The actual signing and sending would need the private key
+    // This part would typically be handled by a wallet or signing service
+    console.log(`
+    Transaction is ready to be signed. Please sign with the upgrade authority.
+    From: ${SOURCE_ADDRESS.toString()}
+    To: ${DESTINATION_ADDRESS.toString()}
+    Auth: ${UPGRADE_AUTHORITY.toString()}
+    Program: ${TOKEN_PROGRAM.toString()}
+    `);
+
+    return {
+      sourceAccount: sourceTokenAccount.toString(),
+      destinationAccount: destinationTokenAccount.toString(),
+      transaction: transaction.serialize().toString('base64')
+    };
+
+  } catch (error) {
+    console.error('Error during token transfer setup:', error);
+    throw error;
   }
 }
+
+// Export function for use
+export { transferTokenWithAuth };
